@@ -3,6 +3,8 @@
 class MotorController
 {
 private:
+
+    // Pin Definitions
     uint8_t FWD_PIN;
     uint8_t INTR_PIN;
 
@@ -65,35 +67,42 @@ void MotorController::Update(float setpoint, volatile uint32_t& count)
     encoderCount = count;
     interrupts();
 
+    // Calculate velocity
     float vel = (encoderCount - countLast) / dt;
     countLast = encoderCount;
 
-    //velFilt = 0.242 * velFilt + 0.379 * vel + 0.379 * velPrev; // 50Hz cut off
-    //velFilt = 0.389 * velFilt + 0.306 * vel + 0.306 * velPrev; // 25Hz
+    // Apply low-pass filter to velocity
     velFilt = 0.614 * velFilt + 0.193 * vel + 0.193 * velPrev; // 10Hz
     velPrev = vel;
 
+    // Add bounds to target Velocity
     targetV = setpoint;
     targetV = (targetV > 2 * PI) ? 2 * PI : targetV;
     targetV = (targetV < 0.5) ? 0 : targetV;
 
+    // PI Controller
     float e = targetV / countsToRadians - velFilt;
     float u = kp * e + ki * (errorIntegral += e * dt);
   
+    // Anti-windup
     errorIntegral = (errorIntegral > 255) ? 255 : errorIntegral;
     errorIntegral = (errorIntegral < -255) ? -255 : errorIntegral;
   
+    // Add bounds to control signal
     u = (u > 255) ? 255 : u;
     u = (u < 0) ? 0 : u;
   
+    //Set PWM signal
     analogWrite(FWD_PIN, u);
 }
 
+// Get the velocity in radians per second
 float MotorController::GetVelocity()
 {
     return velFilt * countsToRadians;
 }
 
+// Get the position in radians
 float MotorController::GetPosition()
 {
     return encoderCount * countsToRadians;
